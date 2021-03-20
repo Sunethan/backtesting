@@ -1,5 +1,6 @@
 import DataAnalysis as Data
 import utils
+import backtesting as bt
 import math
 import numpy as np
 import matplotlib
@@ -27,91 +28,27 @@ path = {'QQQ': pwd + r'\QQQ.csv',
 Stock = {ETF: Data.Read(path[ETF], xlabel='Date', ylabel='Close', floatKey='No', yType='float') for ETF in path.keys()}
 Date = {ETF: [i for i in range(len(Stock[ETF].x))] for ETF in path.keys()}
 
-
-class Portfolio(object):
-    def __init__(self, name, money, portfolio):
-        self._name = name
-        self._money = money
-        self._portfolio = portfolio.copy()
-        self._history = {'date': [0], 'money': [money + self._portfolio['QQQ'] * 43.669998]}
-
-    def buy(self, date, stock_name, stock_number, price):
-        self._money = self._money - stock_number * price
-        self._portfolio[stock_name] = self._portfolio[stock_name] + stock_number
-
-        while self._money < 0:
-            self._money = self._money + 1 * price
-            self._portfolio[stock_name] = self._portfolio[stock_name] - 1
-
-        if date not in self._history['date']:
-            self._history['date'].append(date)
-            self._history['money'].append(self.money + self._portfolio[stock_name] * price)
-        else:
-            self._history['money'][-1] += self._portfolio[stock_name] * price
-
-    def sell(self, date, stock_name, stock_number, price):
-        self._money = self._money + stock_number * price
-        self._portfolio[stock_name] = self._portfolio[stock_name] - stock_number
-
-        while self._portfolio[stock_name] < 0:
-            self._money = self._money - 1 * price
-            self._portfolio[stock_name] = self._portfolio[stock_name] + 1
-
-        if date not in self._history['date']:
-            self._history['date'].append(date)
-            self._history['money'].append(self.money - self._portfolio[stock_name] * price)
-        else:
-            self._history['money'][-1] -= self._portfolio[stock_name] * price
-
-    @property
-    def money(self):
-        return self._money
-
-    @property
-    def portofolio(self):
-        return self._portfolio
-
-    @property
-    def history(self):
-        return self._history
-
-
 Cash = 100000  # [USD]
 Initial_stock = 10000  # [USD]
 MA1 = 3  # Moving average 1
-MA2 = 10  # Moving average 2
+MA2 = 30  # Moving average 2
 Buy_Number = 50  # [share]
 Sell_Number = 10  # [share]
 
 InitialState = {'QQQ': math.floor(Initial_stock/Stock['QQQ'].y[0]), 'SQQQ': 0, 'TQQQ': 0}
-Ethan = Portfolio('Ethan', Cash, InitialState)
-MA = {MA1: utils.center_smooth(Stock['QQQ'].y, MA1),
-      MA2: utils.center_smooth(Stock['QQQ'].y, MA2)}
+Ethan = bt.Portfolio('Ethan', Cash, InitialState)
+MA = {'short': utils.center_smooth(Stock['QQQ'].y, MA1),
+      'long': utils.center_smooth(Stock['QQQ'].y, MA2)}
 
 # Strategy
 
-
-def cross(i):
-    if i == 0:
-        return True
-    else:
-        if (MA[MA1][i - 1] - MA[MA2][i - 1]) * (MA[MA1][i] - MA[MA2][i]) < 0:
-            return True
-        else:
-            return False
-
+BackTesting = bt.BackTesting(Ethan, MA=MA, QQQ=Stock['QQQ'].y, TQQQ=Stock['TQQQ'].y, SQQQ=Stock['SQQQ'].y)
 
 for i, (date, price) in enumerate(zip(Date['QQQ'], Stock['QQQ'].y)):
-    if cross(i):
-        if MA[MA1][i] - MA[MA2][i] < 0:
-            Ethan.sell(i, 'TQQQ', Sell_Number, Stock['TQQQ'].y[i])
-            Ethan.buy(i, 'QQQ', int(Sell_Number / 2), Stock['QQQ'].y[i])
-            Ethan.buy(i, 'SQQQ', Sell_Number, Stock['SQQQ'].y[i])
-        else:
-            Ethan.buy(i, 'QQQ', int(Buy_Number / 2), Stock['QQQ'].y[i])
-            Ethan.buy(i, 'TQQQ', Buy_Number, Stock['TQQQ'].y[i])
-            Ethan.sell(i, 'SQQQ', Buy_Number, Stock['SQQQ'].y[i])
-
+    if BackTesting.str_ma_cross_buy(i):
+        BackTesting.act_ma_cross_buy(i, sell=Sell_Number)
+    if BackTesting.str_ma_cross_sell(i):
+        BackTesting.act_ma_cross_sell(i, buy=Buy_Number)
 
 # Plot
 
